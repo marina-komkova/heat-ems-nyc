@@ -1,0 +1,19 @@
+[project]
+name = "heat-ems-nyc"
+version = "0.1.0"
+description = "Add your description here"
+requires-python = ">=3.12"
+dependencies = [
+    "duckdb>=2.0.0",
+    "ipykernel>=7.4.0",
+    "jupyterlab>=4.6.4",
+    "lightgbm>=4.7.0",
+    "matplotlib>=3.11.2",
+    "pandas>=3.0.6",
+    "plotly>=7.1.0",
+    "pyarrow>=26.0.0",
+    "requests>=2.34.2",
+    "scikit-learn>=1.9.1",
+    "seaborn>=0.13.2",
+    "shap>=0.54.1",
+]
