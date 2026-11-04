@@ -68,4 +68,8 @@ heat-ems-nyc/
 | 8 | Проверка на Сиэтле | пропущен (по желанию) | — |
 | 9 | README, графики, дашборд | ✅ | `README.md`, `dashboard/app.py` |
 
-Осталось: переписать выводы в ноутбуках 04–07 своими словами, создать репозиторий на GitHub, по желанию опубликовать дашборд на Streamlit Community Cloud.
+Опубликовано 04.11.2026:
+- код: https://github.com/marina-komkova/heat-ems-nyc
+- дашборд: https://heat-ems-nyc.streamlit.app (Streamlit Community Cloud, файл `dashboard/app.py`; обновляется сам после `git push` в `main`)
+
+Осталось: переписать выводы в ноутбуках 04–07 своими словами.
