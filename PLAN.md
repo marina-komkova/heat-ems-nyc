@@ -66,6 +66,6 @@ heat-ems-nyc/
 | 6 | SHAP | ✅ | `notebooks/06_shap.ipynb` |
 | 7 | H4: Erlang C | ✅ | `notebooks/07_erlang_c.ipynb` |
 | 8 | Проверка на Сиэтле | пропущен (по желанию) | — |
-| 9 | README, графики, дашборд | ✅ | `README.md`, `app.py` |
+| 9 | README, графики, дашборд | ✅ | `README.md`, `dashboard/app.py` |
 
 Осталось: переписать выводы в ноутбуках 04–07 своими словами, создать репозиторий на GitHub, по желанию опубликовать дашборд на Streamlit Community Cloud.

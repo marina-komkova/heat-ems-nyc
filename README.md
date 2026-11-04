@@ -49,7 +49,7 @@
 
 ```
 heat-ems-nyc/
-├── app.py                  ← дашборд Streamlit
+├── dashboard/app.py        ← дашборд Streamlit
 ├── notebooks/              ← анализ по этапам
 ├── src/
 │   ├── download_ems.py         загрузка вызовов через API NYC Open Data
@@ -68,7 +68,7 @@ heat-ems-nyc/
 
 ```bash
 uv sync                                     # установить зависимости
-uv run streamlit run app.py                 # открыть дашборд (данные уже в data/processed)
+uv run streamlit run dashboard/app.py                 # открыть дашборд (данные уже в data/processed)
 ```
 
 Чтобы пересчитать всё с нуля:

@@ -1,7 +1,7 @@
 """
 Дашборд «Жара и скорая помощь Нью-Йорка».
 
-Запуск:  uv run streamlit run app.py
+Запуск:  uv run streamlit run dashboard/app.py
 Данные для него готовит:  uv run python src/build_dashboard_data.py
 """
 
@@ -13,7 +13,7 @@ import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
-ROOT = Path(__file__).resolve().parent
+ROOT = Path(__file__).resolve().parent.parent
 sys.path.append(str(ROOT / "src"))
 from queueing import p_wait_longer, units_needed  # noqa: E402
 

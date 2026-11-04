@@ -1,0 +1,7 @@
+# Зависимости только для дашборда (Streamlit Community Cloud берёт этот файл,
+# потому что он лежит рядом с app.py; полный список проекта — в uv.lock)
+streamlit==1.66.1
+pandas==3.0.6
+numpy==2.5.4
+plotly==7.1.0
+pyarrow==26.0.0
