@@ -2,30 +2,33 @@
 Готовит небольшие таблицы для дашборда (data/processed/dashboard/*.parquet),
 чтобы сам дашборд открывался мгновенно и не пересчитывал модели.
 
+Работает только с агрегатами из data/processed (их обновляет src/update_data.py),
+поэтому запускается и на GitHub Actions, где сырых данных нет.
+
 Запуск:  uv run python src/build_dashboard_data.py   (≈ 1 минута)
 """
 
+import json
 from pathlib import Path
 
-import duckdb
 import numpy as np
 import pandas as pd
 import statsmodels.api as sm
 import statsmodels.formula.api as smf
 
 from forecast import FEATS_FULL, FEATS_NO_WEATHER, load_features, split, train_lgbm
+from queueing import units_needed
 
 ROOT = Path(__file__).resolve().parent.parent
-EMS = str(ROOT / "data" / "raw" / "ems" / "*.parquet")
+PROC = ROOT / "data" / "processed"
 OUT = ROOT / "data" / "processed" / "dashboard"
 OUT.mkdir(parents=True, exist_ok=True)
 CONTROLS = "C(month) + C(weekday) + C(year) + is_holiday + is_dst_change"
-VALID = "valid_incident_rspns_time_indc = 'Y'"
-CLEAN = "initial_call_type != 'STNDBY' AND borough != 'UNKNOWN'"
 
-daily = pd.read_parquet(ROOT / "data" / "processed" / "daily_borough.parquet")
-daily = daily[~daily["is_covid"]].copy()
-con = duckdb.connect()
+daily_all = pd.read_parquet(PROC / "daily_borough.parquet")
+daily = daily_all[~daily_all["is_covid"]].copy()
+kpi = {"date_min": str(daily_all["date"].min().date()), "date_max": str(daily_all["date"].max().date()),
+       "n_calls_total": int(daily_all["n_calls"].sum()), "n_days_clean": int(daily["date"].nunique())}
 
 
 def save(df, name):
@@ -67,14 +70,16 @@ for T in np.arange(0, 30.5, 0.5):
 thr = pd.DataFrame(thr)
 save(thr, "threshold_search")
 
+best_T = float(thr.loc[thr["aic"].idxmin(), "T"])
+city["heat"] = (city["tmax"] - best_T).clip(lower=0)
+m_best = smf.glm(f"n_calls ~ heat + {CONTROLS}", data=city, family=sm.families.Poisson()).fit(cov_type="HC0")
+lo, hi = m_best.conf_int().loc["heat"]
+kpi.update(threshold=best_T, pct_5C=(np.exp(5 * m_best.params["heat"]) - 1) * 100,
+           pct_5C_lo=(np.exp(5 * lo) - 1) * 100, pct_5C_hi=(np.exp(5 * hi) - 1) * 100,
+           hot_bin_effect=float(tb.loc[tb["bin"] == "> 33", "effect"].iloc[0]))
+
 # ---------- H2: нагрузка и время доезда ----------
-tail = con.sql(f"""
-SELECT CAST(incident_datetime AS DATE) AS date, borough,
-       quantile_cont(incident_response_seconds_qy, 0.9) FILTER (WHERE {VALID}) AS p90,
-       median(incident_response_seconds_qy) FILTER (WHERE {VALID} AND initial_severity_level_code <= 3) AS med_sev,
-       median(incident_response_seconds_qy) FILTER (WHERE {VALID} AND initial_severity_level_code >= 4) AS med_lo
-FROM '{EMS}' WHERE {CLEAN} GROUP BY ALL""").df()
-tail["date"] = pd.to_datetime(tail["date"])
+tail = pd.read_parquet(PROC / "daily_tail.parquet")
 d = daily.merge(tail, on=["date", "borough"], how="left")
 g = ["borough", "year", "month", "weekday"]
 d["load"] = (d["n_calls"] / d.groupby(g)["n_calls"].transform("mean") - 1) * 100
@@ -87,6 +92,8 @@ lr = (d.groupby("load_bin", observed=True)
            severe=("med_sev_pct", "mean"), non_severe=("med_lo_pct", "mean"))
       .reset_index(drop=True))
 save(lr, "load_response")
+top = lr[lr["days"] >= 30].iloc[-1]
+kpi.update(tail_p90=float(top["p90"]), tail_median=float(top["median_all"]), tail_load=float(top["load"]))
 
 # ---------- H3: прогноз ----------
 feats = load_features()
@@ -99,16 +106,14 @@ fc["pred"] = m_full.predict(test[FEATS_FULL])
 fc["pred_nw"] = m_nw.predict(test[FEATS_NO_WEATHER])
 save(fc, "forecast")
 
-# ---------- H4: пиковые часы, лето 2025–2026 ----------
-hourly = con.sql(f"""
-SELECT CAST(incident_datetime AS DATE) AS date, hour(incident_datetime) AS hour, borough,
-       count(*) AS n_calls,
-       avg(epoch(incident_close_datetime - first_assignment_datetime) / 3600)
-           FILTER (WHERE epoch(incident_close_datetime - first_assignment_datetime) BETWEEN 60 AND 6*3600) AS busy_h,
-       avg((epoch(first_assignment_datetime - incident_datetime) > 60)::int) AS share_wait60
-FROM '{ROOT}/data/raw/ems/202[5-6]-0[6-8].parquet' WHERE {CLEAN} GROUP BY ALL""").df()
-hourly["date"] = pd.to_datetime(hourly["date"])
-peak = hourly[hourly["hour"].between(10, 19)].merge(
+# ---------- H4: пиковые часы двух последних полных лет (июнь–август) ----------
+hourly = pd.read_parquet(PROC / "hourly_peak.parquet")
+last = daily_all["date"].max()
+last_summer = last.year if last >= pd.Timestamp(f"{last.year}-08-31") else last.year - 1
+summers = [last_summer - 1, last_summer]
+hourly = hourly[hourly["date"].dt.year.isin(summers) & hourly["date"].dt.month.isin([6, 7, 8])]
+kpi["summers"] = summers
+peak = hourly.merge(
     daily[["date", "borough", "temperature_2m_max", "weekday"]], on=["date", "borough"])
 peak_day = (peak.groupby(["date", "borough"])
             .agg(calls_per_hour=("n_calls", "mean"), busy_hours=("busy_h", "mean"),
@@ -126,5 +131,20 @@ for b, x in peak_day.groupby("borough"):
     m = smf.ols("np.log(calls_per_hour) ~ heat + C(weekday)", data=x).fit(cov_type="HC0")
     slopes.append({"borough": b, "beta": m.params["heat"], "threshold": PEAK_T,
                    "lo": m.conf_int().loc["heat", 0], "hi": m.conf_int().loc["heat", 1]})
-save(pd.DataFrame(slopes), "peak_slopes")
+slopes = pd.DataFrame(slopes)
+save(slopes, "peak_slopes")
+
+# сколько бригад нужно в дни 33 °C+ по городу (та же модель, что в калькуляторе дашборда)
+n0 = n_hot = 0
+for b, x in peak_day.groupby("borough"):
+    beta = slopes.set_index("borough").loc[b, "beta"]
+    normal = x[x["tmax"] <= PEAK_T]
+    lam0, s0, target = normal["calls_per_hour"].mean(), normal["busy_hours"].mean(), normal["share_wait60"].mean()
+    t_hot = x.loc[x["tmax"] >= 33, "tmax"].mean()
+    n0 += units_needed(lam0 * s0, s0, target)
+    n_hot += units_needed(lam0 * np.exp(beta * (t_hot - PEAK_T)) * s0, s0, target)
+kpi["units_hot_pct"] = (n_hot / n0 - 1) * 100
+
+(OUT / "kpis.json").write_text(json.dumps(kpi, ensure_ascii=False, indent=1, default=float), encoding="utf-8")
+print("KPI:", {k: round(v, 1) if isinstance(v, float) else v for k, v in kpi.items()})
 print("готово:", OUT)

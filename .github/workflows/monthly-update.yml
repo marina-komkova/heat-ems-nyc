@@ -1,0 +1,53 @@
+# Раз в месяц: докачать новые данные NYC EMS и погоду, переобучить модель,
+# пересчитать таблицы дашборда и графики README и закоммитить изменения.
+# Streamlit Community Cloud сам подхватит новый коммит и обновит дашборд.
+name: Ежемесячное обновление данных
+
+on:
+  schedule:
+    - cron: "0 6 15 * *"   # 15-го числа в 06:00 UTC (портал обновляет данные около 7-го)
+  workflow_dispatch:         # кнопка «Run workflow» для ручного запуска
+
+permissions:
+  contents: write
+
+concurrency:
+  group: monthly-update
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+
+      - name: Установить зависимости
+        run: uv sync --frozen
+
+      - name: Докачать новые месяцы
+        id: update
+        run: |
+          before=$(git hash-object data/processed/daily_borough.parquet)
+          uv run python src/update_data.py
+          after=$(git hash-object data/processed/daily_borough.parquet)
+          if [ "$before" != "$after" ]; then echo "changed=true" >> "$GITHUB_OUTPUT"; fi
+
+      - name: Переобучить модель и пересчитать дашборд
+        if: steps.update.outputs.changed == 'true'
+        run: |
+          cd src
+          uv run python build_dashboard_data.py
+          uv run python make_figures.py
+
+      - name: Закоммитить
+        if: steps.update.outputs.changed == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data/processed reports/figures
+          last=$(uv run python -c "import pandas as pd; print(pd.read_parquet('data/processed/daily_borough.parquet')['date'].max().date())")
+          git commit -m "Автообновление данных по $last"
+          git push

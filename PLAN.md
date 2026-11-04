@@ -72,4 +72,6 @@ heat-ems-nyc/
 - код: https://github.com/marina-komkova/heat-ems-nyc
 - дашборд: https://heat-ems-nyc.streamlit.app (Streamlit Community Cloud, файл `dashboard/app.py`; обновляется сам после `git push` в `main`)
 
+Автообновление: GitHub Actions 15-го числа каждого месяца докачивает новые данные, переобучает модель и обновляет дашборд (`.github/workflows/monthly-update.yml`, `src/update_data.py`).
+
 Осталось: переписать выводы в ноутбуках 04–07 своими словами.

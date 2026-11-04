@@ -41,8 +41,8 @@ START = "2016-01"
 END = "2026-09"
 
 
-def download_month(month: pd.Period) -> str:
-    out_file = OUT_DIR / f"{month}.parquet"
+def download_month(month: pd.Period, out_dir: Path = OUT_DIR) -> str:
+    out_file = Path(out_dir) / f"{month}.parquet"
     if out_file.exists():
         return f"{month}: уже есть, пропускаю"
 

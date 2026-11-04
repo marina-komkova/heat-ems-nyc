@@ -40,14 +40,15 @@ DAILY_VARS = [
 ]
 
 
-def main() -> None:
+def fetch(start_date: str, end_date: str) -> pd.DataFrame:
+    """Дневная погода по 5 районам за период [start_date, end_date] включительно."""
     frames = []
     for borough, (lat, lon) in BOROUGHS.items():
         params = {
             "latitude": lat,
             "longitude": lon,
-            "start_date": "2016-01-01",
-            "end_date": "2026-09-30",
+            "start_date": start_date,
+            "end_date": end_date,
             "daily": ",".join(DAILY_VARS),
             "timezone": "America/New_York",  # чтобы «день» совпадал с местным днём вызовов скорой
         }
@@ -70,6 +71,11 @@ def main() -> None:
     weather = pd.concat(frames, ignore_index=True)
     weather = weather.rename(columns={"time": "date"})
     weather["date"] = pd.to_datetime(weather["date"])
+    return weather
+
+
+def main() -> None:
+    weather = fetch("2016-01-01", "2026-09-30")
     OUT_FILE.parent.mkdir(parents=True, exist_ok=True)
     weather.to_parquet(OUT_FILE, index=False)
     print(f"Сохранено: {OUT_FILE} ({len(weather):,} строк)")
