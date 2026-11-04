@@ -7,6 +7,11 @@ on:
   schedule:
     - cron: "0 6 15 * *"   # 15-го числа в 06:00 UTC (портал обновляет данные около 7-го)
   workflow_dispatch:         # кнопка «Run workflow» для ручного запуска
+    inputs:
+      force:
+        description: "Пересчитать модель и дашборд, даже если новых данных нет"
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -33,7 +38,9 @@ jobs:
           before=$(git hash-object data/processed/daily_borough.parquet)
           uv run python src/update_data.py
           after=$(git hash-object data/processed/daily_borough.parquet)
-          if [ "$before" != "$after" ]; then echo "changed=true" >> "$GITHUB_OUTPUT"; fi
+          if [ "$before" != "$after" ] || [ "${{ inputs.force }}" = "true" ]; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Переобучить модель и пересчитать дашборд
         if: steps.update.outputs.changed == 'true'
@@ -49,5 +56,6 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add data/processed reports/figures
           last=$(uv run python -c "import pandas as pd; print(pd.read_parquet('data/processed/daily_borough.parquet')['date'].max().date())")
+          if git diff --cached --quiet; then echo "Изменений нет"; exit 0; fi
           git commit -m "Автообновление данных по $last"
           git push
